@@ -1,0 +1,88 @@
+library(BrazilCrime)
+library(tidyverse)
+library(ggplot2)
+library(svglite)
+
+#ANÁLISE SINESP
+
+dados_sp_rj <- get_sinesp_vde_data(
+  state = c("SP", "RJ"),
+  granularity = "year")
+
+base_sp_rj <- dados_sp_ano_rj %>%
+  filter(ano >= 2022, str_detect(evento, regex("Feminicídio|\\bHomicídio doloso\\b|morte|Morte ", ignore_case = FALSE)))
+
+#ANÁLISE SP E RJ
+
+#M: tem que ter as palavras a cima e tem que ter total_vítimas, 
+
+morte_sp_rj <- base_sp_rj %>%
+  group_by(uf, evento, mes, ano) %>%
+  summarise(n_casos = sum(total_vitima))
+
+
+#criando coluna mês/ano
+
+temp_sp <- morte_sp_rj %>%
+  ungroup() %>%
+  mutate(
+    mes_num = as.integer(mes),
+    mes_ano = paste0(
+      c("jan", "fev", "mar", "abr", "mai", "jun",
+        "jul", "ago", "set", "out", "nov", "dez")[mes_num], "/",
+      substr(ano, 3, 4)),
+    ordem = ano * 100 + mes_num) %>%
+   arrange(ordem) %>%
+  mutate(
+    mes_ano = factor(mes_ano, levels = unique(mes_ano)))
+  
+
+#cria do a tab só com homicidios
+
+ homicidio <- temp_sp_rj %>%
+   filter(evento == "Homicídio doloso")
+ 
+ 
+#Ajuste da direção dos rótulos de dados
+
+hom_graf <- homicidio %>%
+   arrange(uf, mes_ano) %>%
+   group_by(uf) %>%
+   mutate(label = format(n_casos, decimal.mark = ",", big.mark = "."),
+     direcao = c(0, diff(n_casos)),
+     nudge = case_when(
+       uf == "RJ" & direcao >= 0 ~ 1.8,
+       uf == "RJ" & direcao <  0 ~ -1.8,
+       uf == "SP" & direcao >= 0 ~ 1.2,
+       uf == "SP" & direcao <  0 ~ -1.2),
+     vjust_txt = ifelse(direcao >= 0, 0, 1) ) %>%
+   ungroup()
+ 
+#criando o primeiro gráfico
+
+graf1 <- ggplot(hom_graf, aes(x = factor(mes_ano), y = n_casos,
+                              color = uf, group = uf)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.8, shape = 15) +
+  geom_text(aes(label = label, y = n_casos + nudge, vjust = vjust_txt),
+            size = 4.5, fontface = "bold", family = "Calibri",
+            color = "grey20", show.legend = FALSE) +
+  labs(y = "Número de vítimas", x = "", title = "", color = "") +
+  scale_y_continuous(
+    limits = c(0, max(hom_graf$n_casos) * 1.15),
+    expand = expansion(mult = c(0, 0.05))) +
+  
+  scale_color_manual(values = c("SP" = "#C00000", "RJ" = "#1F3B73")) +
+  theme_void(base_family = "Calibri", base_size = 14) +
+  theme(axis.title.y = element_text(size = 13, color = "grey20", face = "bold", angle = 90, margin = margin(r = 20)),
+    axis.line.x = element_line(color = "grey40", linewidth = 0.4),
+    axis.line.y = element_line(color = "grey40", linewidth = 0.4),
+    axis.ticks = element_blank(),
+    axis.text.x = element_text(size = 11, color = "black", angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 12, color = "black"),
+    plot.margin = margin(20, 20, 15, 15))
+    
+  graf1
+
+#salvando esse primeiro gráfico
+ggsave("graf1.svg", graf1, width = 16, height = 6, device = "svg")
