@@ -1,0 +1,84 @@
+library(openxlsx)
+library(tidyverse)
+library(ggplot2)
+
+#PEGANDO A BASE DE SÃO PAULO
+load("sp_dados.RData")
+
+#DISTINCT POR BO E SELEÇÃO DE LINHAS
+
+ssp_temp <- base_sp %>%
+  group_by(ANO_ESTATISTICA) %>%
+  summarise(n_casos = n())
+ 
+
+mes_ano <- ssp_temp %>%
+  ungroup() %>%
+  mutate(
+    mes_num = as.integer(MES_ESTATISTICA),
+    mes_ano = paste0(
+      c("jan", "fev", "mar", "abr", "mai", "jun",
+        "jul", "ago", "set", "out", "nov", "dez")[mes_num], "/",
+      substr(ANO_ESTATISTICA, 3, 4)),
+    ordem = ANO_ESTATISTICA * 100 + mes_num) %>%
+  arrange(ordem) %>%
+  mutate(
+    mes_ano = factor(mes_ano, levels = unique(mes_ano)))
+
+  
+
+hom_graf <- mes_ano %>%
+  arrange(mes_ano) %>%
+  mutate(
+    label = format(n_casos, decimal.mark = ",", big.mark = "."),
+    direcao = c(0, diff(n_casos)),
+    nudge = ifelse(direcao >= 0, 1.8, -1.8),
+    vjust_txt = ifelse(direcao >= 0, 0, 1))
+
+
+
+graf1 <- ggplot(hom_graf, aes(x = factor(mes_ano), y = n_casos, group = 1)) +
+  geom_line(linewidth = 0.8, color = "#1F3B73") +
+  geom_point(size = 1.8, shape = 15, color = "#1F3B73") +
+  geom_text(
+    aes(label = label, y = n_casos + nudge, vjust = vjust_txt),
+    size = 4.5,
+    fontface = "bold",
+    family = "Calibri",
+    color = "grey20"
+  ) +
+  labs(
+    y = "Número de vítimas",
+    x = ""
+  ) +
+  scale_y_continuous(
+    limits = c(0, max(hom_graf$n_casos) * 1.15),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  theme_void(base_family = "Calibri", base_size = 14) +
+  theme(
+    axis.title.y = element_text(
+      size = 13, color = "grey20",
+      face = "bold", angle = 90,
+      margin = margin(r = 20)
+    ),
+    axis.line.x = element_line(color = "grey40", linewidth = 0.4),
+    axis.line.y = element_line(color = "grey40", linewidth = 0.4),
+    axis.ticks = element_blank(),
+    axis.text.x = element_text(
+      size = 11, color = "black",
+      angle = 45, hjust = 1
+    ),
+    axis.text.y = element_text(size = 12, color = "black"),
+    plot.margin = margin(20, 20, 15, 15)
+  )
+
+graf1
+
+
+
+
+
+
+
+
