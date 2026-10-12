@@ -1,0 +1,27 @@
+
+vde22 <- read.xlsx("BancoVDE 2022.xlsx") %>%
+  filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual") %>%
+  mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
+
+vde23 <- read.xlsx("BancoVDE 2023.xlsx") %>%
+  filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual") %>%
+  mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
+
+vde24 <- read.xlsx("BancoVDE 2024.xlsx") %>%
+  filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual" )%>%
+  mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
+
+vde25 <- read.xlsx("BancoVDE 2025.xlsx") %>%
+  filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual") %>%
+  mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
+
+
+
+
+banco <- rbind(vde22, vde23)
+
+banco2 <- rbind(banco, vde24)
+
+banco_vde <- rbind(banco2, vde25)
+
+save(banco_vde, file = "Banco_sinespvde.RData")
