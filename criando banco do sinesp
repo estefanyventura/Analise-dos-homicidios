@@ -1,27 +1,222 @@
+# Pacotes utilizados
+library(openxlsx)
+library(tidyverse)
+library(ggplot2)
+library(svglite)
 
+
+# ============================================================
+# ANÁLISE SINESP-VDE
+# ============================================================
+
+# 1. IMPORTAÇÃO E TRATAMENTO DAS BASES ANUAIS
+# ============================================================
+
+# Importa os dados de 2022, selecionando RJ e SP com abrangência estadual.
+# Converte a variável data_referencia para o formato de data.
 vde22 <- read.xlsx("BancoVDE 2022.xlsx") %>%
   filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual") %>%
   mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
 
+
+# Importa e trata os dados de 2023.
 vde23 <- read.xlsx("BancoVDE 2023.xlsx") %>%
   filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual") %>%
   mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
 
+
+# Importa e trata os dados de 2024.
 vde24 <- read.xlsx("BancoVDE 2024.xlsx") %>%
-  filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual" )%>%
+  filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual") %>%
   mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
 
+
+# Importa e trata os dados de 2025.
 vde25 <- read.xlsx("BancoVDE 2025.xlsx") %>%
   filter(uf %in% c("RJ", "SP") & abrangencia == "Estadual") %>%
   mutate(data_referencia = as.Date(data_referencia, origin = "1899-12-30"))
 
 
+# 2. CONSOLIDAÇÃO DAS BASES
+# ============================================================
 
+# Une os dados dos quatro anos em uma única base.
+banco_vde <- bind_rows(vde22, vde23, vde24, vde25)
 
-banco <- rbind(vde22, vde23)
-
-banco2 <- rbind(banco, vde24)
-
-banco_vde <- rbind(banco2, vde25)
-
+# Salva a base consolidada em um arquivo RData.
 save(banco_vde, file = "Banco_sinespvde.RData")
+
+# Carrega a base consolidada, caso seja necessário retomar a análise.
+load("Banco_sinespvde.RData")
+
+
+# 3. VERIFICAÇÃO DA ESTRUTURA DA BASE
+# ============================================================
+
+# Consulta os nomes das variáveis.
+colnames(banco_vde)
+
+# Verifica as primeiras linhas da base.
+head(banco_vde)
+
+# Confere os estados, eventos e tipos de abrangência disponíveis.
+banco_vde %>%
+  summarise(
+    estados = n_distinct(uf),
+    eventos = n_distinct(evento),
+    abrangencias = n_distinct(abrangencia)
+  )
+
+
+# 4. VERIFICAÇÃO DA DISPONIBILIDADE MENSAL
+# ============================================================
+
+# Confere a quantidade de meses disponíveis por estado e ano.
+# Espera-se encontrar 12 meses para cada ano completo.
+banco_vde %>%
+  distinct(uf, data_referencia) %>%
+  mutate(ano = year(data_referencia)) %>%
+  count(uf, ano, name = "n_meses") %>%
+  arrange(uf, ano)
+
+
+# 5. TOTAL ANUAL DE VÍTIMAS DE HOMICÍDIO DOLOSO
+# ============================================================
+
+# Calcula o total anual de vítimas de homicídio doloso por estado.
+# Para esse evento, utiliza-se total_vitima, pois as variáveis
+# total e total_peso estavam sem valores.
+totais_sinesp <- banco_vde %>%
+  filter(evento == "Homicídio doloso") %>%
+  mutate(ano = year(data_referencia)) %>%
+  group_by(uf, ano) %>%
+  summarise(
+    total_vitimas = sum(total_vitima, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(uf, ano)
+
+totais_sinesp
+
+
+# 6. CONFERÊNCIA DAS VÍTIMAS POR SEXO
+# ============================================================
+
+# Verifica se a soma das vítimas femininas, masculinas e não
+# identificadas corresponde ao total de vítimas.
+# A conferência é feita para o estado de SP em 2024,
+# no evento Homicídio doloso.
+banco_vde %>%
+  filter(
+    uf == "SP",
+    evento == "Homicídio doloso",
+    year(data_referencia) == 2024
+  ) %>%
+  summarise(
+    femininas = sum(feminino, na.rm = TRUE),
+    masculinas = sum(masculino, na.rm = TRUE),
+    nao_identificadas = sum(nao_informado, na.rm = TRUE),
+    total_vitimas = sum(total_vitima, na.rm = TRUE),
+    soma_sexo = femininas + masculinas + nao_identificadas
+  )
+
+
+# 7. INVESTIGAÇÃO DE POSSÍVEIS DUPLICIDADES NO RJ
+# ============================================================
+
+# Verifica se algum município aparece mais de uma vez
+# em janeiro de 2024, para homicídio doloso no RJ.
+banco_vde %>%
+  filter(
+    uf == "RJ",
+    evento == "Homicídio doloso",
+    data_referencia == as.Date("2024-01-01")
+  ) %>%
+  count(municipio, sort = TRUE) %>%
+  filter(n > 1)
+
+
+# Confere a quantidade de linhas, municípios distintos e
+# total de vítimas em janeiro de 2024, no RJ.
+banco_vde %>%
+  filter(
+    uf == "RJ",
+    evento == "Homicídio doloso",
+    data_referencia == as.Date("2024-01-01")
+  ) %>%
+  summarise(
+    n_linhas = n(),
+    n_municipios = n_distinct(municipio),
+    total_vitimas = sum(total_vitima, na.rm = TRUE)
+  )
+
+
+# 8. EXAME DAS LINHAS "NÃO INFORMADO" NO RJ
+# ============================================================
+
+# Verifica os registros classificados como NÃO INFORMADO
+# em janeiro de 2024, incluindo as variáveis de sexo e total.
+banco_vde %>%
+  filter(
+    uf == "RJ",
+    evento == "Homicídio doloso",
+    data_referencia == as.Date("2024-01-01"),
+    municipio == "NÃO INFORMADO"
+  ) %>%
+  select(
+    municipio, agente, arma, faixa_etaria,
+    feminino, masculino, nao_informado, total_vitima
+  )
+
+
+# 9. VERIFICAÇÃO DAS LINHAS "NÃO INFORMADO" AO LONGO DE 2024
+# ============================================================
+
+# Verifica mensalmente a quantidade de linhas, municípios distintos,
+# registros NÃO INFORMADO e vítimas atribuídas a essa categoria.
+# O objetivo é identificar se as linhas extras contribuem
+# para o total de vítimas de homicídio doloso.
+banco_vde %>%
+  filter(
+    uf == "RJ",
+    evento == "Homicídio doloso",
+    year(data_referencia) == 2024
+  ) %>%
+  group_by(data_referencia) %>%
+  summarise(
+    n_linhas = n(),
+    n_municipios = n_distinct(municipio),
+    n_nao_informado = sum(municipio == "NÃO INFORMADO"),
+    vitimas_nao_informado = sum(
+      total_vitima[municipio == "NÃO INFORMADO"],
+      na.rm = TRUE
+    ),
+    total_vitimas = sum(total_vitima, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+# 10. CONFERÊNCIA COMPLEMENTAR DOS DADOS DO RJ EM 2024
+# ============================================================
+
+# Verifica a quantidade de linhas, o total de vítimas,
+# as vítimas não identificadas por sexo, os registros com
+# variáveis de sexo ausentes e as linhas com total igual a zero.
+# Esse teste auxilia na análise da consistência dos registros.
+banco_vde %>%
+  filter(
+    uf == "RJ",
+    evento == "Homicídio doloso",
+    year(data_referencia) == 2024
+  ) %>%
+  summarise(
+    linhas = n(),
+    total_vitimas = sum(total_vitima, na.rm = TRUE),
+    vitimas_nao_informadas = sum(nao_informado, na.rm = TRUE),
+    linhas_sexo_na = sum(
+      is.na(feminino) &
+        is.na(masculino) &
+        is.na(nao_informado)
+    ),
+    total_vitima_zero = sum(total_vitima == 0, na.rm = TRUE)
+  )
